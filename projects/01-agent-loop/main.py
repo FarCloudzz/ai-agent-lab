@@ -16,8 +16,12 @@ P0 · 最小 agent loop —— 这个文件由你实现。
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+import os
+import urllib.error
+import urllib.request
 
 from tools import TOOLS, WORKSPACE, run_tool
 
@@ -43,7 +47,20 @@ def load_env(path: Path) -> None:
 
     要求：忽略注释和空行；已存在的环境变量不要被覆盖。
     """
-    raise NotImplementedError("任务 1")
+    print(path)
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        # 忽略空行和注释
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        os.environ.setdefault(key, value)
 
 
 def stream_turn(url: str, api_key: str, model: str, messages: list[dict]):
@@ -56,15 +73,44 @@ def stream_turn(url: str, api_key: str, model: str, messages: list[dict]):
 
     提示：用 urllib.request；响应体一行一行读，只处理 "data:" 开头的行。
     """
-    raise NotImplementedError("任务 2")
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+    }
+    req = urllib.request.Request(
+        f"{url}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        print(result["choices"][0]["message"]["content"])
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print("HTTP", e.code)
+        print("服务端返回:", body)
+        raise
+    
+
 
 
 def run(task: str, model: str, max_steps: int) -> int:
     """任务 4 + 5：主循环。返回值会作为进程退出码。"""
-    raise NotImplementedError("任务 4")
+    API_KEY = os.environ["API_KEY"].strip()
+    BASE_URL = os.environ.get("BASE_URL").strip()
+    MODEL = os.environ.get("MODEL").strip()
+    messages = [{"role": "user", "content": task}]
+    stream_turn(BASE_URL, API_KEY, MODEL, messages)
 
 
 def main() -> None:
+    load_env(Path(".env"))
     parser = argparse.ArgumentParser(description="P0 最小 agent loop")
     parser.add_argument("task", help="要 agent 做的事")
     parser.add_argument("--max-steps", type=int, default=20)
